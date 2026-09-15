@@ -1,0 +1,9 @@
+# 기출 문항은 비공개 자료다. 저장소에 절대 넣지 않는다.
+# 앱에서 파일로 가져와 기기에만 보관한다.
+rounds/
+data/rounds/
+*.round.json
+
+node_modules/
+.DS_Store
+Thumbs.db
