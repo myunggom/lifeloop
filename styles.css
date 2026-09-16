@@ -336,3 +336,49 @@ input:focus, select:focus, textarea:focus, button:focus-visible {
   word-break: break-all;
   user-select: all;
 }
+
+/* ---------- 보관함 ---------- */
+
+.archive {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  background: var(--surface);
+}
+
+.archive summary {
+  cursor: pointer;
+  font-size: 0.88rem;
+  color: var(--muted);
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+}
+
+.archive-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.archive-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.a-title {
+  flex: 1;
+  min-width: 120px;
+}
+
+.a-meta {
+  font-size: 0.78rem;
+  color: var(--muted);
+}

@@ -197,6 +197,66 @@ function goalCard(goal, ctx) {
       })));
 }
 
+/**
+ * 보관한 목표를 되돌리거나 완전히 지운다.
+ *
+ * 보관하면 화면에서 아예 사라져 되돌릴 방법이 없었다. 잘못 눌러도 복구가 안 되니
+ * 접어둔 채로 남겨두고, 여기서만 완전 삭제를 할 수 있게 한다.
+ */
+function archivedSection(ctx) {
+  const archived = state.goals.filter((g) => g.archived);
+  if (!archived.length) return null;
+
+  const row = (goal) => {
+    const routines = state.routines.filter((r) => r.goalId === goal.id);
+    return el(
+      'li',
+      {},
+      el('span', { class: 'a-title', text: goal.title }),
+      el('span', { class: 'a-meta', text: `루틴 ${routines.length}개` }),
+      el('button', {
+        class: 'link',
+        text: '되돌리기',
+        onclick: () => {
+          goal.archived = false;
+          save();
+          ctx.render();
+          toast('되돌렸습니다. 오늘 화면에 다시 나옵니다.');
+        },
+      }),
+      el('button', {
+        class: 'link danger',
+        text: '완전 삭제',
+        onclick: () => {
+          if (
+            !confirmed(
+              `"${goal.title}"과 루틴 ${routines.length}개를 완전히 지웁니다.
+` +
+                '지난 세션 기록과 노트는 남습니다. 되돌릴 수 없습니다.',
+            )
+          )
+            return;
+          state.goals.splice(state.goals.indexOf(goal), 1);
+          // 뒤에서부터 지운다. 앞에서 지우면 인덱스가 밀린다.
+          for (let i = state.routines.length - 1; i >= 0; i--) {
+            if (state.routines[i].goalId === goal.id) state.routines.splice(i, 1);
+          }
+          save();
+          ctx.render();
+          toast('지웠습니다.');
+        },
+      }),
+    );
+  };
+
+  return el(
+    'details',
+    { class: 'archive' },
+    el('summary', { text: `보관한 목표 ${archived.length}개` }),
+    el('ul', { class: 'archive-list' }, archived.map(row)),
+  );
+}
+
 export default function renderGoals(ctx) {
   const goals = activeGoals();
   return el('section', { class: 'view' },
@@ -206,5 +266,6 @@ export default function renderGoals(ctx) {
     goals.length
       ? el('div', { class: 'cards' }, goals.map((g) => goalCard(g, ctx)))
       : el('div', { class: 'empty' }, el('p', { text: '아직 목표가 없습니다.' })),
-    el('button', { class: 'btn primary wide', text: '+ 새 목표', onclick: () => goalForm(null, ctx) }));
+    el('button', { class: 'btn primary wide', text: '+ 새 목표', onclick: () => goalForm(null, ctx) }),
+    archivedSection(ctx));
 }

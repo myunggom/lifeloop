@@ -409,4 +409,48 @@ check('목표를 보관하면 그 루틴은 오늘 화면에서 빠진다', () =
   assert.ok(store.routinesForDay(store.today()).some((r) => r.id === 'r-live'));
 });
 
+
+// ---------- 보관함 ----------
+
+check('되돌리면 루틴이 오늘 화면에 다시 나온다', () => {
+  const goal = { id: 'g-back', title: '되돌릴 목표', deadline: null, archived: true, leads: [] };
+  const routine = {
+    id: 'r-back', goalId: 'g-back', leadId: 'l-back', createdAt: store.today(),
+    cue: '아침에', action: '돌아올 루틴', minimum: '1분', tag: 'other',
+    days: [0, 1, 2, 3, 4, 5, 6], archived: false,
+  };
+  store.state.goals.push(goal);
+  store.state.routines.push(routine);
+  assert.ok(!store.routinesForDay(store.today()).some((r) => r.id === 'r-back'), '보관 중에는 안 보인다');
+
+  goal.archived = false;
+  assert.ok(store.routinesForDay(store.today()).some((r) => r.id === 'r-back'), '되돌리면 다시 보인다');
+});
+
+check('완전 삭제는 목표와 그 루틴만 지우고 기록은 남긴다', () => {
+  const goal = { id: 'g-del', title: '지울 목표', deadline: null, archived: true, leads: [] };
+  const mine = { id: 'r-del', goalId: 'g-del', leadId: 'l-del', createdAt: store.today(),
+    cue: '밤에', action: '지울 루틴', minimum: '1분', tag: 'other', days: [0,1,2,3,4,5,6], archived: false };
+  const other = { ...mine, id: 'r-keep', goalId: 'g-keep', action: '남을 루틴' };
+  store.state.goals.push(goal, { id: 'g-keep', title: '남을 목표', deadline: null, archived: false, leads: [] });
+  store.state.routines.push(mine, other);
+  store.state.sessions.push({ id: 's-del', routineId: 'r-del', date: store.today(), minutes: 20, level: 'full', noteId: null });
+  store.save();
+
+  // 화면의 "완전 삭제"가 하는 일
+  store.state.goals.splice(store.state.goals.indexOf(goal), 1);
+  for (let i = store.state.routines.length - 1; i >= 0; i--) {
+    if (store.state.routines[i].goalId === 'g-del') store.state.routines.splice(i, 1);
+  }
+  store.save();
+
+  assert.ok(!store.state.goals.some((g) => g.id === 'g-del'));
+  assert.ok(!store.state.routines.some((r) => r.id === 'r-del'));
+  assert.ok(store.state.routines.some((r) => r.id === 'r-keep'), '다른 목표의 루틴은 남는다');
+  assert.ok(store.state.sessions.some((s) => s.id === 's-del'), '지난 기록은 남는다');
+  // 지운 것이 다른 기기로도 전해져야 한다
+  assert.ok(store.state.deleted['g-del'] > 0, '목표에 삭제 표시');
+  assert.ok(store.state.deleted['r-del'] > 0, '루틴에 삭제 표시');
+});
+
 console.log(`통과 ${passed}개${process.exitCode ? ' · 실패 있음' : ''}`);
