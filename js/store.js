@@ -263,6 +263,31 @@ export function leadProgress(goal, lead, wkStart = weekStart()) {
 
 export const UNIT_LABEL = { session: '회', minute: '분', note: '개' };
 
+/** 이 루틴이 걸려 있는 선행지표 */
+export function leadOfRoutine(routine) {
+  const goal = state.goals.find((g) => g.id === routine.goalId);
+  return goal && Array.isArray(goal.leads) ? goal.leads.find((l) => l.id === routine.leadId) : undefined;
+}
+
+/**
+ * 분으로 점수를 매기는 루틴인가.
+ * 이런 루틴은 "완료"만 눌러서는 지표가 채워지지 않으므로 시간을 물어야 한다.
+ */
+export function isMinuteRoutine(routine) {
+  const lead = leadOfRoutine(routine);
+  return Boolean(lead && lead.unit === 'minute');
+}
+
+/** 오늘 이 루틴에 기록된 분 합계 */
+export const minutesToday = (routineId, date = today()) =>
+  state.sessions
+    .filter((s) => s.routineId === routineId && s.date === date)
+    .reduce((sum, s) => sum + (s.minutes || 0), 0);
+
+/** 오늘 이 루틴의 마지막 기록. 분을 고칠 때 쓴다 */
+export const lastSessionToday = (routineId, date = today()) =>
+  state.sessions.filter((s) => s.routineId === routineId && s.date === date).at(-1);
+
 // ---------- 파인만 노트 ----------
 
 export const STUDY_TAGS = ['study', 'read'];

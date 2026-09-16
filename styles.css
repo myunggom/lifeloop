@@ -382,3 +382,18 @@ input:focus, select:focus, textarea:focus, button:focus-visible {
   font-size: 0.78rem;
   color: var(--muted);
 }
+
+/* ---------- 시간 입력 칩 ---------- */
+
+.chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.chips .chip {
+  flex: 1 1 auto;
+  min-width: 64px;
+  min-height: 44px;
+  padding: 8px 10px;
+}

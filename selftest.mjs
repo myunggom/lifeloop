@@ -453,4 +453,50 @@ check('완전 삭제는 목표와 그 루틴만 지우고 기록은 남긴다', 
   assert.ok(store.state.deleted['r-del'] > 0, '루틴에 삭제 표시');
 });
 
+
+// ---------- 분 단위 선행지표 ----------
+// 실제로 났던 버그: 독서 10분을 하고 "완료"를 눌렀는데 주간 지표가 0분이었다.
+// "완료"는 0분으로 기록되고 타이머로 끝낸 세션에만 분이 담겨 있었다.
+
+check('분 지표 루틴을 알아본다', () => {
+  const goal = {
+    id: 'g-min', title: '독서', deadline: null, archived: false,
+    leads: [
+      { id: 'l-min', title: '주 60분 독서', unit: 'minute', target: 60 },
+      { id: 'l-cnt', title: '주 3회', unit: 'session', target: 3 },
+    ],
+  };
+  const reading = { id: 'r-min', goalId: 'g-min', leadId: 'l-min', createdAt: store.today(),
+    cue: '자기 전', action: '독서', minimum: '한 쪽', tag: 'read', days: [0,1,2,3,4,5,6], archived: false };
+  const counting = { ...reading, id: 'r-cnt', leadId: 'l-cnt' };
+  store.state.goals.push(goal);
+  store.state.routines.push(reading, counting);
+
+  assert.equal(store.isMinuteRoutine(reading), true, '분 지표에 걸린 루틴');
+  assert.equal(store.isMinuteRoutine(counting), false, '횟수 지표에 걸린 루틴은 묻지 않는다');
+});
+
+check('분이 담긴 세션만 주간 지표를 채운다', () => {
+  const goal = store.state.goals.find((g) => g.id === 'g-min');
+  const lead = goal.leads[0];
+  const wk = store.weekStart(store.today());
+
+  // 예전 동작: 완료를 눌러 0분으로 남은 상태
+  store.state.sessions.push({ id: 's-zero', routineId: 'r-min', date: store.today(), minutes: 0, level: 'full', noteId: null });
+  assert.equal(store.leadProgress(goal, lead, wk), 0, '0분이면 채워지지 않는다');
+
+  // 고친 동작: 10분을 담아 기록
+  store.state.sessions.push({ id: 's-ten', routineId: 'r-min', date: store.today(), minutes: 10, level: 'full', noteId: null });
+  assert.equal(store.leadProgress(goal, lead, wk), 10);
+  assert.equal(store.minutesToday('r-min'), 10, '오늘 합계도 10분');
+});
+
+check('오늘 분을 고치면 합계가 그 값이 된다', () => {
+  // 화면의 "분 고치기"가 하는 계산: 마지막 기록만 손대서 오늘 합계를 맞춘다
+  const target = 25;
+  const session = store.lastSessionToday('r-min');
+  session.minutes = Math.max(0, target - (store.minutesToday('r-min') - (session.minutes || 0)));
+  assert.equal(store.minutesToday('r-min'), target);
+});
+
 console.log(`통과 ${passed}개${process.exitCode ? ' · 실패 있음' : ''}`);
