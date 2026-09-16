@@ -270,4 +270,102 @@ check('createdAt 이 없는 루틴은 첫 기록일을 시작으로 본다', () 
   assert.equal(store.missStreak(legacy, '2026-09-15'), 2);
 });
 
+
+// ---------- 기기 간 병합 ----------
+
+const merge = await import('./js/merge.js');
+
+const G = (id, title, at) => ({ id, title, deadline: null, archived: false, leads: [], updatedAt: at });
+const N = (id, concept, at) => ({ ...store.makeNote({ concept, date: '2026-09-15' }), id, updatedAt: at });
+
+check('양쪽에만 있던 것은 둘 다 남는다', () => {
+  const mine = { goals: [G('g1', '내 목표', 100)], routines: [], sessions: [], notes: [], weekly: [], deleted: {} };
+  const theirs = { goals: [G('g2', '다른 기기 목표', 200)], routines: [], sessions: [], notes: [], weekly: [], deleted: {} };
+  const out = merge.mergeState(mine, theirs);
+  assert.deepEqual(out.goals.map((g) => g.id).sort(), ['g1', 'g2']);
+});
+
+check('같은 것은 나중에 손댄 쪽이 이긴다', () => {
+  const mine = { goals: [G('g1', '옛 제목', 100)], deleted: {} };
+  const theirs = { goals: [G('g1', '새 제목', 500)], deleted: {} };
+  assert.equal(merge.mergeState(mine, theirs).goals[0].title, '새 제목');
+  // 방향이 반대여도 결과는 같다
+  assert.equal(merge.mergeState(theirs, mine).goals[0].title, '새 제목');
+});
+
+const T = Date.now();
+
+check('한쪽에서 지운 것은 되살아나지 않는다', () => {
+  const mine = { notes: [], deleted: { n1: T - 1000 } };
+  const theirs = { notes: [N('n1', '지워진 노트', T - 5000)], deleted: {} };
+  assert.equal(merge.mergeState(mine, theirs).notes.length, 0);
+  assert.equal(merge.mergeState(theirs, mine).notes.length, 0, '방향이 반대여도 같다');
+});
+
+check('지운 뒤에 다른 기기에서 고친 것은 살린다', () => {
+  const mine = { notes: [], deleted: { n1: T - 5000 } };
+  const theirs = { notes: [N('n1', '다시 고친 노트', T - 1000)], deleted: {} };
+  assert.equal(merge.mergeState(mine, theirs).notes.length, 1);
+});
+
+check('삭제 표시는 양쪽을 합치고 늦은 시각을 남긴다', () => {
+  const out = merge.mergeState({ deleted: { a: T - 900, b: T - 300 } }, { deleted: { a: T - 600 } });
+  assert.deepEqual(out.deleted, { a: T - 600, b: T - 300 });
+});
+
+check('180일이 지난 삭제 표시는 버린다', () => {
+  // 표시를 영원히 들고 있지 않는다. 그만큼 오래 안 맞춘 기기는 없다고 본다.
+  const old = T - 200 * 24 * 60 * 60 * 1000;
+  const out = merge.mergeState({ deleted: { stale: old } }, { deleted: {} });
+  assert.deepEqual(out.deleted, {});
+});
+
+check('세션은 같은 날 여러 건이어도 id로 구분해 모두 남는다', () => {
+  const mine = { sessions: [{ id: 's1', routineId: 'r1', date: '2026-09-15', minutes: 20, updatedAt: 1 }], deleted: {} };
+  const theirs = { sessions: [{ id: 's2', routineId: 'r1', date: '2026-09-15', minutes: 30, updatedAt: 2 }], deleted: {} };
+  assert.equal(merge.mergeState(mine, theirs).sessions.length, 2);
+});
+
+check('주간 회고는 주차로 식별한다', () => {
+  const mine = { weekly: [{ week: '2026-09-14', keep: '내 회고', updatedAt: 100 }], deleted: {} };
+  const theirs = { weekly: [{ week: '2026-09-14', keep: '다른 기기 회고', updatedAt: 300 }], deleted: {} };
+  const out = merge.mergeState(mine, theirs);
+  assert.equal(out.weekly.length, 1);
+  assert.equal(out.weekly[0].keep, '다른 기기 회고');
+});
+
+check('빈 쪽과 합쳐도 잃지 않는다', () => {
+  const mine = { goals: [G('g1', '혼자', 100)], deleted: {} };
+  assert.equal(merge.mergeState(mine, null).goals.length, 1);
+  assert.equal(merge.mergeState(null, mine).goals.length, 1);
+});
+
+check('오염된 삭제 표시는 걸러낸다', () => {
+  const evil = JSON.parse(`{"__proto__":{"polluted":true},"ok":${T - 100}}`);
+  const out = merge.mergeState({ deleted: {} }, { deleted: evil });
+  assert.equal({}.polluted, undefined, '프로토타입이 오염되면 안 된다');
+  assert.deepEqual(Object.keys(out.deleted), ['ok']);
+});
+
+// ---------- 저장할 때 시각이 찍히는가 ----------
+
+check('바뀐 항목에만 시각이 찍히고, 지운 항목은 표시가 남는다', () => {
+  const goal = { id: 'g-stamp', title: '처음', deadline: null, archived: false, leads: [] };
+  store.state.goals.push(goal);
+  store.save();
+  const firstStamp = goal.updatedAt;
+  assert.ok(firstStamp > 0, '새 항목에 시각이 찍혀야 한다');
+
+  store.save();
+  assert.equal(goal.updatedAt, firstStamp, '고치지 않았으면 시각이 그대로여야 한다');
+
+  goal.title = '고침';
+  store.save();
+  assert.ok(goal.updatedAt >= firstStamp, '고치면 시각이 갱신된다');
+
+  store.state.goals.splice(store.state.goals.indexOf(goal), 1);
+  store.save();
+  assert.ok(store.state.deleted['g-stamp'] > 0, '지우면 삭제 표시가 남아야 한다');
+});
+
 console.log(`통과 ${passed}개${process.exitCode ? ' · 실패 있음' : ''}`);

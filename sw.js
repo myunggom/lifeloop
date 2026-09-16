@@ -1,7 +1,7 @@
 // 앱 셸 캐시. 데이터는 localStorage에 있으므로 여기서 다룰 것이 없다.
 // 비행기 모드에서도 앱이 열리게 하는 것이 전부다.
 
-const CACHE = 'lifeloop-v1';
+const CACHE = 'lifeloop-v2';
 
 const SHELL = [
   './',
@@ -15,6 +15,8 @@ const SHELL = [
   './js/ui.js',
   './js/exam.js',
   './js/share.js',
+  './js/merge.js',
+  './js/sync.js',
   './js/views/today.js',
   './js/views/goals.js',
   './js/views/notes.js',

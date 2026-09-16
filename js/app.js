@@ -1,5 +1,6 @@
 import { el, clear, modal } from './ui.js';
-import { dueNotes, today } from './store.js';
+import { dueNotes, today, setOnSaved } from './store.js';
+import { SYNCED_EVENT, scheduleSync } from './sync.js';
 import renderToday from './views/today.js';
 import renderGoals from './views/goals.js';
 import renderNotes from './views/notes.js';
@@ -72,10 +73,21 @@ function render() {
 
 render();
 
+// 기록을 남길 때마다 동기화를 예약한다. 연달아 눌러도 한 번으로 묶인다.
+setOnSaved(() => scheduleSync());
+
+// 다른 기기에서 들어온 것이 화면에 바로 보이게 한다
+window.addEventListener(SYNCED_EVENT, () => render());
+
+// 앱을 열 때, 다시 돌아올 때, 인터넷이 돌아올 때 맞춘다
+scheduleSync(0);
+window.addEventListener('online', () => scheduleSync(0));
+
 // 앱을 닫았다 열면 "오늘"부터 시작하는 게 맞다. 날짜가 바뀌면 화면도 새로 그린다.
 let lastSeenDate = today();
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
+  scheduleSync(0);
   if (today() !== lastSeenDate) {
     lastSeenDate = today();
     ctx.navigate('today');

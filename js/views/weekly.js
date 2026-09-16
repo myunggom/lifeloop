@@ -2,7 +2,18 @@ import {
   state, save, today, addDays, weekStart, daysBetween,
   activeGoals, leadProgress, UNIT_LABEL, exportJSON, importJSON, lastSaveError,
 } from '../store.js';
-import { el, toast, download, pickFiles, confirmed } from '../ui.js';
+import { el, toast, download, pickFiles, confirmed, copyText } from '../ui.js';
+import {
+  STATUS_EVENT,
+  clearSyncCode,
+  getSyncCode,
+  getSyncStatus,
+  lastSyncedAt,
+  newSyncCode,
+  normalizeCode,
+  setSyncCode,
+  syncNow,
+} from '../sync.js';
 
 const WEEKS = 12;
 
@@ -92,10 +103,130 @@ function retro(ctx) {
     mk('next', '다음 주에 바꿀 한 가지', '한 가지만'));
 }
 
+const timeText = (at) =>
+  new Date(at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+/**
+ * 기기 간 동기화. 한 기기에서 코드를 만들고 다른 기기에 같은 코드를 넣으면 묶인다.
+ * 로그인이 없으므로 코드가 곧 열쇠다.
+ */
+function syncPanel(ctx) {
+  const code = getSyncCode();
+  const status = getSyncStatus();
+
+  const connect = async (next) => {
+    setSyncCode(next);
+    ctx.render();
+    try {
+      await syncNow();
+      toast('맞췄습니다.');
+    } catch (err) {
+      toast(err.message, 'warn');
+    }
+    ctx.render();
+  };
+
+  if (!code) {
+    const input = el('input', {
+      type: 'text',
+      placeholder: '다른 기기의 코드 붙여넣기',
+      'aria-label': '동기화 코드',
+      autocomplete: 'off',
+      autocapitalize: 'off',
+      autocorrect: 'off',
+      spellcheck: 'false',
+    });
+    return el(
+      'div',
+      { class: 'card' },
+      el('h2', { text: '기기 간 동기화' }),
+      el('p', {
+        class: 'hint',
+        text: '폰과 다른 기기에서 같은 기록을 보려면 켠다. 한 기기에서 코드를 만들고 다른 기기에 그 코드를 넣으면 된다. 양쪽에 있던 기록은 합쳐진다.',
+      }),
+      el('button', {
+        class: 'btn primary wide',
+        text: '새 코드 만들기',
+        onclick: () => void connect(newSyncCode()),
+      }),
+      el(
+        'div',
+        { class: 'row' },
+        input,
+        el('button', {
+          class: 'btn',
+          text: '연결',
+          onclick: () => {
+            const next = normalizeCode(input.value);
+            if (!next) return toast('코드는 32자입니다. 복사한 코드를 그대로 붙여넣으세요.', 'warn');
+            void connect(next);
+          },
+        }),
+      ),
+    );
+  }
+
+  const last = lastSyncedAt();
+  const statusText =
+    status.state === 'syncing'
+      ? '동기화 중…'
+      : status.state === 'error'
+        ? `동기화 실패: ${status.message}`
+        : last
+          ? `마지막 동기화 ${timeText(last)}`
+          : '아직 동기화하지 않았습니다.';
+
+  return el(
+    'div',
+    { class: 'card' },
+    el('h2', { text: '기기 간 동기화 · 켜짐' }),
+    el('p', {
+      class: 'hint',
+      text: '다른 기기에서 이 코드를 넣으면 같은 기록을 본다. 코드를 아는 사람은 기록을 볼 수 있으니 남에게 보내지 말자.',
+    }),
+    el('code', { class: 'sync-code', text: code }),
+    el(
+      'div',
+      { class: 'row' },
+      el('button', {
+        class: 'btn',
+        text: '코드 복사',
+        onclick: async () => {
+          const ok = await copyText(code);
+          toast(ok ? '복사했습니다.' : '복사가 막혔습니다. 코드를 길게 눌러 복사하세요.', ok ? 'info' : 'warn');
+        },
+      }),
+      el('button', {
+        class: 'btn ghost',
+        text: '지금 동기화',
+        onclick: async () => {
+          try {
+            await syncNow();
+            toast('맞췄습니다.');
+          } catch (err) {
+            toast(err.message, 'warn');
+          }
+          ctx.render();
+        },
+      }),
+    ),
+    el('button', {
+      class: 'btn ghost wide',
+      text: '연결 끊기',
+      onclick: () => {
+        if (!confirmed('이 기기의 동기화를 끕니다. 기록은 이 기기에 그대로 남습니다.')) return;
+        clearSyncCode();
+        ctx.render();
+      },
+    }),
+    el('p', { class: status.state === 'error' ? 'warn' : 'hint', text: statusText }),
+  );
+}
+
 function backup(ctx) {
   return el('div', { class: 'card' },
     el('h2', { text: '백업' }),
-    el('p', { class: 'hint', text: '이 앱은 서버가 없습니다. 기기를 잃으면 기록도 사라지므로 가끔 내보내세요. (기출 문항은 언제든 다시 가져올 수 있어 백업에 포함하지 않습니다.)' }),
+    el('p', { class: 'hint', text: '동기화를 쓰지 않거나 따로 보관해 두고 싶을 때. 가져오기는 이 기기 기록을 지우고 파일 내용으로 바꿉니다. (기출 문항은 언제든 다시 가져올 수 있어 백업에 포함하지 않습니다.)' }),
     el('div', { class: 'row' },
       el('button', {
         class: 'btn', text: '내보내기',
@@ -130,5 +261,6 @@ export default function renderWeekly(ctx) {
     el('div', { class: 'card' }, el('h2', { text: '최근 12주' }), grid()),
     leadSummary(),
     retro(ctx),
+    syncPanel(ctx),
     backup(ctx));
 }

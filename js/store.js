@@ -3,7 +3,29 @@
 
 const KEY = 'lifeloop.v1';
 
-const EMPTY = { version: 1, goals: [], routines: [], sessions: [], notes: [], weekly: [] };
+const EMPTY = {
+  version: 1,
+  goals: [],
+  routines: [],
+  sessions: [],
+  notes: [],
+  weekly: [],
+  // 지운 항목의 id와 지운 시각. 기기 간 병합은 양쪽을 다 남기는 방식이라
+  // 이 기록이 없으면 한쪽에서 지운 노트가 다른 기기와 맞출 때 되살아난다.
+  deleted: {},
+};
+
+/** 동기화가 합칠 수 있는 묶음. 배열은 id로, weekly는 주차 문자열로 식별한다 */
+export const COLLECTIONS = [
+  { key: 'goals', idOf: (x) => x.id },
+  { key: 'routines', idOf: (x) => x.id },
+  { key: 'sessions', idOf: (x) => x.id },
+  { key: 'notes', idOf: (x) => x.id },
+  { key: 'weekly', idOf: (x) => x.week },
+];
+
+/** 삭제 표시를 영원히 들고 있을 필요는 없다 */
+const DELETED_TTL_MS = 180 * 24 * 60 * 60 * 1000;
 
 export const uid = () =>
   (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Date.now() + '-' + Math.random().toString(36).slice(2));
@@ -51,10 +73,74 @@ function load() {
 
 export const state = load();
 
+/** 불러온 직후의 모습을 기준으로 삼는다. 이걸 안 하면 첫 저장에 전부 바뀐 것으로 찍힌다 */
+export function resetSnapshot() {
+  snapshot = new Map();
+  for (const { key, idOf } of COLLECTIONS) {
+    for (const item of state[key]) {
+      const id = idOf(item);
+      if (id !== undefined) snapshot.set(key + ':' + id, fingerprint(item));
+    }
+  }
+}
+
 let saveError = null;
 export const lastSaveError = () => saveError;
 
+/**
+ * 바뀐 항목에만 updatedAt을 찍고, 사라진 항목은 삭제 표시를 남긴다.
+ *
+ * 화면 곳곳에서 객체를 직접 고치므로(Object.assign, push, splice) 호출부마다
+ * 시각을 찍게 하면 빠뜨리기 쉽다. 저장 직전에 지난 저장 때의 모습과 비교하면
+ * 한 곳에서 끝난다. 이 시각이 있어야 기기 간 병합에서 어느 쪽이 최신인지 가린다.
+ */
+let snapshot = new Map();
+
+// updatedAt은 빼고, 키 순서에 흔들리지 않게 직렬화한다
+const fingerprint = (obj) =>
+  JSON.stringify(
+    Object.keys(obj)
+      .filter((k) => k !== 'updatedAt')
+      .sort()
+      .map((k) => [k, obj[k]]),
+  );
+
+function stampChanges(now = Date.now()) {
+  const seen = new Map();
+  for (const { key, idOf } of COLLECTIONS) {
+    for (const item of state[key]) {
+      const id = idOf(item);
+      if (id === undefined) continue;
+      const mark = key + ':' + id;
+      const print = fingerprint(item);
+      seen.set(mark, print);
+      if (snapshot.get(mark) !== print) item.updatedAt = now;
+    }
+  }
+  // 지난 저장에는 있었는데 지금 없으면 지워진 것이다
+  for (const mark of snapshot.keys()) {
+    if (!seen.has(mark)) state.deleted[mark.slice(mark.indexOf(':') + 1)] = now;
+  }
+  for (const [id, at] of Object.entries(state.deleted)) {
+    if (typeof at !== 'number' || now - at > DELETED_TTL_MS) delete state.deleted[id];
+  }
+  snapshot = seen;
+}
+
+// 선언이 모두 끝난 뒤에 기준을 잡는다
+resetSnapshot();
+
+/**
+ * 저장이 끝나면 부를 함수. app.js 가 동기화를 건다.
+ * store 가 sync 를 직접 import 하면 순환이 되므로 갈고리만 둔다.
+ */
+let onSaved = null;
+export const setOnSaved = (fn) => {
+  onSaved = fn;
+};
+
 export function save() {
+  stampChanges();
   try {
     localStorage.setItem(KEY, JSON.stringify(state));
     saveError = null;
@@ -63,6 +149,7 @@ export function save() {
     saveError = err;
     console.error('저장 실패:', err);
   }
+  if (!saveError && onSaved) onSaved();
   return saveError;
 }
 
@@ -79,7 +166,11 @@ export function importJSON(text) {
       throw new Error(`"${key}" 항목이 배열이 아닙니다.`);
     }
   }
+  if (incoming.deleted !== undefined && (typeof incoming.deleted !== 'object' || incoming.deleted === null)) {
+    throw new Error('"deleted" 항목의 형식이 올바르지 않습니다.');
+  }
   Object.assign(state, structuredClone(EMPTY), incoming);
+  resetSnapshot();
   save();
 }
 
