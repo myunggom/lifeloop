@@ -381,4 +381,32 @@ check('동기화가 심은 저장은 다시 동기화를 부르지 않는다', (
   store.setOnSaved(null);
 });
 
+
+// ---------- 보관한 목표 ----------
+// 실제로 났던 버그: 목표를 보관했는데 그 루틴이 오늘 화면에 계속 떴다.
+
+check('목표를 보관하면 그 루틴은 오늘 화면에서 빠진다', () => {
+  const goal = { id: 'g-arch', title: '접은 목표', deadline: null, archived: false, leads: [{ id: 'l-arch', title: '주 3회', unit: 'session', target: 3 }] };
+  const routine = {
+    id: 'r-arch', goalId: 'g-arch', leadId: 'l-arch', createdAt: store.today(),
+    cue: '아침에', action: '접을 루틴', minimum: '1분', tag: 'other',
+    days: [0, 1, 2, 3, 4, 5, 6], archived: false,
+  };
+  store.state.goals.push(goal);
+  store.state.routines.push(routine);
+
+  assert.ok(store.routinesForDay(store.today()).some((r) => r.id === 'r-arch'), '보관 전에는 보인다');
+
+  goal.archived = true;
+  assert.ok(!store.routinesForDay(store.today()).some((r) => r.id === 'r-arch'), '보관하면 사라져야 한다');
+  assert.ok(!store.activeRoutines().some((r) => r.id === 'r-arch'));
+
+  // 다른 목표의 루틴까지 휩쓸지 않는다
+  const other = { id: 'g-live', title: '살아있는 목표', deadline: null, archived: false, leads: [] };
+  const otherRoutine = { ...routine, id: 'r-live', goalId: 'g-live', action: '남을 루틴' };
+  store.state.goals.push(other);
+  store.state.routines.push(otherRoutine);
+  assert.ok(store.routinesForDay(store.today()).some((r) => r.id === 'r-live'));
+});
+
 console.log(`통과 ${passed}개${process.exitCode ? ' · 실패 있음' : ''}`);

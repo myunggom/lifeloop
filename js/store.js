@@ -182,7 +182,18 @@ export function importJSON(text) {
 // ---------- 조회 ----------
 
 export const activeGoals = () => state.goals.filter((g) => !g.archived);
-export const activeRoutines = () => state.routines.filter((r) => !r.archived);
+/**
+ * 목표를 보관하면 그 아래 루틴도 오늘 화면에서 빠져야 한다.
+ * 보관은 목표에만 표시를 남기므로, 루틴의 archived 만 보면 보관한 목표의 루틴이 계속 뜬다.
+ * 여기서 걸러야 이미 보관해 둔 목표에도 바로 적용된다(데이터를 고치지 않아도 된다).
+ */
+const goalArchived = (goalId) => {
+  const goal = state.goals.find((g) => g.id === goalId);
+  return Boolean(goal && goal.archived);
+};
+
+export const activeRoutines = () =>
+  state.routines.filter((r) => !r.archived && !goalArchived(r.goalId));
 export const routineById = (id) => state.routines.find((r) => r.id === id);
 export const goalById = (id) => state.goals.find((g) => g.id === id);
 export const noteById = (id) => state.notes.find((n) => n.id === id);
