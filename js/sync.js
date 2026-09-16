@@ -146,7 +146,8 @@ function applyMerged(merged) {
   state.deleted = merged.deleted;
   // 합친 결과가 "바뀐 것"으로 다시 찍히면 서로 최신이라고 우기게 된다
   resetSnapshot();
-  return save();
+  // silent: 이 저장이 다시 동기화를 부르면 끝없이 돈다
+  return save(true);
 }
 
 let inflight = null;

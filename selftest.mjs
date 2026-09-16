@@ -368,4 +368,17 @@ check('바뀐 항목에만 시각이 찍히고, 지운 항목은 표시가 남�
   assert.ok(store.state.deleted['g-stamp'] > 0, '지우면 삭제 표시가 남아야 한다');
 });
 
+
+check('동기화가 심은 저장은 다시 동기화를 부르지 않는다', () => {
+  // 이게 깨지면 저장 → 동기화 → 저장 → 동기화 로 끝없이 돈다
+  let calls = 0;
+  store.setOnSaved(() => calls++);
+  store.state.goals.push({ id: 'g-loop', title: '되먹임 확인', archived: false, leads: [] });
+  store.save();
+  assert.equal(calls, 1, '보통 저장은 알린다');
+  store.save(true);
+  assert.equal(calls, 1, 'silent 저장은 알리지 않는다');
+  store.setOnSaved(null);
+});
+
 console.log(`통과 ${passed}개${process.exitCode ? ' · 실패 있음' : ''}`);

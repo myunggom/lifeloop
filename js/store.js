@@ -139,7 +139,12 @@ export const setOnSaved = (fn) => {
   onSaved = fn;
 };
 
-export function save() {
+/**
+ * @param {boolean} [silent] 저장 후 알림을 보내지 않는다.
+ *   동기화가 받아온 결과를 심을 때 쓴다. 이게 없으면
+ *   저장 → 동기화 → 저장 → 동기화 로 끝없이 돈다.
+ */
+export function save(silent = false) {
   stampChanges();
   try {
     localStorage.setItem(KEY, JSON.stringify(state));
@@ -149,7 +154,7 @@ export function save() {
     saveError = err;
     console.error('저장 실패:', err);
   }
-  if (!saveError && onSaved) onSaved();
+  if (!saveError && !silent && onSaved) onSaved();
   return saveError;
 }
 
